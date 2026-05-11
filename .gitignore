@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Firebase
+.firebase/
+.firebaserc
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build
+build/
+dist/
+
+# Mobile
+ios/
+android/
