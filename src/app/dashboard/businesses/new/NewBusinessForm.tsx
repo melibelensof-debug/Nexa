@@ -64,26 +64,18 @@ export function NewBusinessForm({
         <label className="block text-sm">
           <span className="text-slate-700">Categoría *</span>
           <select name="categoryId" required defaultValue="" className={inputClass}>
-            <option value="" disabled>
-              Selecciona...
-            </option>
+            <option value="" disabled>Selecciona...</option>
             {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </label>
         <label className="block text-sm">
           <span className="text-slate-700">Región *</span>
           <select name="regionId" required defaultValue="" className={inputClass}>
-            <option value="" disabled>
-              Selecciona...
-            </option>
+            <option value="" disabled>Selecciona...</option>
             {regions.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
+              <option key={r.id} value={r.id}>{r.name}</option>
             ))}
           </select>
         </label>

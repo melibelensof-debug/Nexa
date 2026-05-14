@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/utils";
 
 export async function GET(request: Request) {
@@ -11,26 +9,20 @@ export async function GET(request: Request) {
   const region = searchParams.get("region") ?? undefined;
   const q = searchParams.get("q") ?? undefined;
 
-  const businesses = await prisma.business.findMany({
-    where: {
-      AND: [
-        category ? { category: { slug: category } } : {},
-        region ? { region: { slug: region } } : {},
-        q
-          ? {
-              OR: [
-                { name: { contains: q } },
-                { description: { contains: q } },
-              ],
-            }
-          : {},
-      ],
-    },
-    include: { category: true, region: true },
-    orderBy: { name: "asc" },
-  });
+  const supabase = createClient();
 
-  return NextResponse.json({ data: businesses });
+  let query = supabase
+    .from("businesses")
+    .select("*, category:categories!inner(name, slug), region:regions!inner(name, slug)")
+    .order("name");
+
+  if (category) query = query.eq("categories.slug", category);
+  if (region) query = query.eq("regions.slug", region);
+  if (q) query = query.or(`name.ilike.%${q}%,description.ilike.%${q}%`);
+
+  const { data, error } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ data });
 }
 
 const createSchema = z.object({
@@ -48,18 +40,11 @@ const createSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-  }
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
-  }
-
+  const body = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -67,7 +52,6 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-
   const data = parsed.data;
   const empty = (v: string | undefined) => (v && v.length > 0 ? v : null);
 
@@ -75,18 +59,25 @@ export async function POST(request: Request) {
   const baseSlug = slugify(data.name);
   let slug = baseSlug;
   let i = 1;
-  while (await prisma.business.findUnique({ where: { slug } })) {
+  while (true) {
+    const { data: dup } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("slug", slug)
+      .maybeSingle();
+    if (!dup) break;
     i += 1;
     slug = `${baseSlug}-${i}`;
   }
 
-  const business = await prisma.business.create({
-    data: {
+  const { data: business, error } = await supabase
+    .from("businesses")
+    .insert({
       name: data.name,
       slug,
       description: data.description,
-      categoryId: data.categoryId,
-      regionId: data.regionId,
+      category_id: data.categoryId,
+      region_id: data.regionId,
       email: empty(data.email),
       phone: empty(data.phone),
       website: empty(data.website),
@@ -94,9 +85,12 @@ export async function POST(request: Request) {
       instagram: empty(data.instagram),
       facebook: empty(data.facebook),
       address: empty(data.address),
-      ownerId: session.user.id,
-    },
-  });
+      owner_id: user.id,
+      source: "manual",
+    })
+    .select()
+    .single();
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data: business }, { status: 201 });
 }

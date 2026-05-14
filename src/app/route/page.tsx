@@ -1,13 +1,15 @@
-import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
 import { RoutePlanner } from "./RoutePlanner";
 
 export const dynamic = "force-dynamic";
 
 export default async function RoutePage() {
-  const businesses = await prisma.business.findMany({
-    orderBy: { name: "asc" },
-    include: { category: true, region: true },
-  });
+  const supabase = createClient();
+
+  const { data: businesses } = await supabase
+    .from("businesses")
+    .select("id, name, category:categories(name), region:regions(name)")
+    .order("name");
 
   return (
     <div className="space-y-6">
@@ -18,12 +20,18 @@ export default async function RoutePage() {
           Nexa te arma el orden óptimo y abre la ruta en Google Maps.
         </p>
       </header>
-      <RoutePlanner businesses={businesses.map((b) => ({
-        id: b.id,
-        name: b.name,
-        category: b.category.name,
-        region: b.region.name,
-      }))} />
+      <RoutePlanner
+        businesses={(businesses ?? []).map((b) => {
+          const cat = Array.isArray(b.category) ? b.category[0] : b.category;
+          const reg = Array.isArray(b.region) ? b.region[0] : b.region;
+          return {
+            id: b.id,
+            name: b.name,
+            category: cat?.name ?? "",
+            region: reg?.name ?? "",
+          };
+        })}
+      />
     </div>
   );
 }

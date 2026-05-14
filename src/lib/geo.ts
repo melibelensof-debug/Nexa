@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * Geocodificación usando Nominatim (OpenStreetMap).
@@ -9,7 +9,14 @@ export async function geocode(query: string): Promise<{ lat: number; lon: number
   const q = query.trim();
   if (!q) return null;
 
-  const cached = await prisma.geocodeCache.findUnique({ where: { query: q } });
+  const supabase = createAdminClient();
+
+  const { data: cached } = await supabase
+    .from("geocode_cache")
+    .select("latitude, longitude, display")
+    .eq("query", q)
+    .maybeSingle();
+
   if (cached) {
     return { lat: cached.latitude, lon: cached.longitude, display: cached.display ?? undefined };
   }
@@ -31,13 +38,10 @@ export async function geocode(query: string): Promise<{ lat: number; lon: number
   const lon = parseFloat(data[0].lon);
   const display = data[0].display_name;
 
-  await prisma.geocodeCache
-    .create({
-      data: { query: q, latitude: lat, longitude: lon, display },
-    })
-    .catch(() => {
-      /* ignore unique race */
-    });
+  await supabase
+    .from("geocode_cache")
+    .insert({ query: q, latitude: lat, longitude: lon, display })
+    .then(() => undefined, () => undefined);
 
   return { lat, lon, display };
 }

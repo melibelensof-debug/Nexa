@@ -2,16 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin";
 import { runActorSync, type GMapsItem } from "@/lib/apify";
-import { prisma } from "@/lib/prisma";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { slugify } from "@/lib/utils";
 
 const schema = z.object({
-  /** Búsqueda libre, ej: "panaderia salta argentina". */
   searchTerms: z.array(z.string().min(1)).min(1).max(10),
   maxItems: z.number().int().min(1).max(200).default(20),
-  /** Slug de la categoría destino (debe existir). */
   categorySlug: z.string().min(1),
-  /** Slug de la región destino (debe existir). */
   regionSlug: z.string().min(1),
 });
 
@@ -26,10 +23,13 @@ export async function POST(request: Request) {
   }
   const { searchTerms, maxItems, categorySlug, regionSlug } = parsed.data;
 
-  const [category, region] = await Promise.all([
-    prisma.category.findUnique({ where: { slug: categorySlug } }),
-    prisma.region.findUnique({ where: { slug: regionSlug } }),
+  const supabase = createAdminClient();
+
+  const [{ data: category }, { data: region }] = await Promise.all([
+    supabase.from("categories").select("id, name").eq("slug", categorySlug).maybeSingle(),
+    supabase.from("regions").select("id, name").eq("slug", regionSlug).maybeSingle(),
   ]);
+
   if (!category || !region) {
     return NextResponse.json({ error: "Categoría o región no encontrada" }, { status: 400 });
   }
@@ -58,25 +58,30 @@ export async function POST(request: Request) {
     const data = {
       name: it.title,
       description: it.description?.slice(0, 1500) ?? `${category.name} en ${region.name}.`,
-      categoryId: category.id,
-      regionId: region.id,
+      category_id: category.id,
+      region_id: region.id,
       address: it.address ?? null,
       phone: it.phone ?? null,
       website: it.website ?? null,
       latitude: it.location?.lat ?? null,
       longitude: it.location?.lng ?? null,
       rating: it.totalScore ?? null,
-      reviewsCount: it.reviewsCount ?? null,
-      imageUrl: it.imageUrl ?? null,
+      reviews_count: it.reviewsCount ?? null,
+      image_url: it.imageUrl ?? null,
       hours: it.openingHours ? JSON.stringify(it.openingHours) : null,
       source: "google_maps",
-      externalId: it.placeId ?? null,
+      external_id: it.placeId ?? null,
     };
 
     if (it.placeId) {
-      const existing = await prisma.business.findFirst({ where: { externalId: it.placeId, source: "google_maps" } });
+      const { data: existing } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("external_id", it.placeId)
+        .eq("source", "google_maps")
+        .maybeSingle();
       if (existing) {
-        await prisma.business.update({ where: { id: existing.id }, data });
+        await supabase.from("businesses").update(data).eq("id", existing.id);
         updated += 1;
         continue;
       }
@@ -84,11 +89,13 @@ export async function POST(request: Request) {
 
     let slug = slugBase;
     let i = 1;
-    while (await prisma.business.findUnique({ where: { slug } })) {
+    while (true) {
+      const { data: dup } = await supabase.from("businesses").select("id").eq("slug", slug).maybeSingle();
+      if (!dup) break;
       i += 1;
       slug = `${slugBase}-${i}`;
     }
-    await prisma.business.create({ data: { ...data, slug } });
+    await supabase.from("businesses").insert({ ...data, slug });
     created += 1;
   }
 

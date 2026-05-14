@@ -1,18 +1,24 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function BusinessDetail({
   params,
 }: {
   params: { slug: string };
 }) {
-  const business = await prisma.business.findUnique({
-    where: { slug: params.slug },
-    include: { category: true, region: true },
-  });
+  const supabase = createClient();
+
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("*, category:categories(name, slug), region:regions(name, slug)")
+    .eq("slug", params.slug)
+    .maybeSingle();
 
   if (!business) notFound();
+
+  const cat = Array.isArray(business.category) ? business.category[0] : business.category;
+  const reg = Array.isArray(business.region) ? business.region[0] : business.region;
 
   const links: { label: string; href: string }[] = [];
   if (business.website) links.push({ label: "Sitio web", href: business.website });
@@ -44,10 +50,10 @@ export default async function BusinessDetail({
         </Link>
       </div>
 
-      {business.imageUrl && (
+      {business.image_url && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={business.imageUrl}
+          src={business.image_url}
           alt={business.name}
           className="h-56 w-full rounded-xl object-cover"
         />
@@ -55,13 +61,13 @@ export default async function BusinessDetail({
 
       <header>
         <div className="text-xs uppercase tracking-wide text-brand-600">
-          {business.category.name} · {business.region.name}
+          {cat?.name} · {reg?.name}
         </div>
         <h1 className="mt-1 text-3xl font-bold">{business.name}</h1>
         {business.rating != null && (
           <div className="mt-1 text-sm text-amber-600">
-            ⭐ {business.rating.toFixed(1)}
-            {business.reviewsCount ? ` · ${business.reviewsCount} reseñas` : ""}
+            ⭐ {Number(business.rating).toFixed(1)}
+            {business.reviews_count ? ` · ${business.reviews_count} reseñas` : ""}
           </div>
         )}
       </header>

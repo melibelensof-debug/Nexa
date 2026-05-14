@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin";
 import { runActorSync, type FacebookItem } from "@/lib/apify";
-import { prisma } from "@/lib/prisma";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { slugify } from "@/lib/utils";
 
 const schema = z.object({
@@ -21,11 +21,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 });
   }
   const { pages, categorySlug, regionSlug } = parsed.data;
+  const supabase = createAdminClient();
 
-  const [category, region] = await Promise.all([
-    prisma.category.findUnique({ where: { slug: categorySlug } }),
-    prisma.region.findUnique({ where: { slug: regionSlug } }),
+  const [{ data: category }, { data: region }] = await Promise.all([
+    supabase.from("categories").select("id, name").eq("slug", categorySlug).maybeSingle(),
+    supabase.from("regions").select("id, name").eq("slug", regionSlug).maybeSingle(),
   ]);
+
   if (!category || !region) {
     return NextResponse.json({ error: "Categoría o región no encontrada" }, { status: 400 });
   }
@@ -61,35 +63,42 @@ export async function POST(request: Request) {
     const data = {
       name: display,
       description: (it.about ?? it.intro ?? `${category.name} en ${region.name}.`).slice(0, 1500),
-      categoryId: category.id,
-      regionId: region.id,
+      category_id: category.id,
+      region_id: region.id,
       address: it.address ?? null,
       email: it.email ?? null,
       phone: it.phone ?? null,
       website: it.website ?? null,
       facebook: handle,
-      imageUrl: it.profilePhoto ?? null,
+      image_url: it.profilePhoto ?? null,
       rating: it.rating ?? null,
-      reviewsCount: it.ratingCount ?? null,
+      reviews_count: it.ratingCount ?? null,
       source: "facebook",
-      externalId: it.pageUrl ?? handle,
+      external_id: it.pageUrl ?? handle,
     };
 
     const externalId = it.pageUrl ?? handle;
-    const existing = await prisma.business.findFirst({ where: { externalId, source: "facebook" } });
+    const { data: existing } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("external_id", externalId)
+      .eq("source", "facebook")
+      .maybeSingle();
     if (existing) {
-      await prisma.business.update({ where: { id: existing.id }, data });
+      await supabase.from("businesses").update(data).eq("id", existing.id);
       updated += 1;
       continue;
     }
 
     let slug = slugBase;
     let i = 1;
-    while (await prisma.business.findUnique({ where: { slug } })) {
+    while (true) {
+      const { data: dup } = await supabase.from("businesses").select("id").eq("slug", slug).maybeSingle();
+      if (!dup) break;
       i += 1;
       slug = `${slugBase}-${i}`;
     }
-    await prisma.business.create({ data: { ...data, slug } });
+    await supabase.from("businesses").insert({ ...data, slug });
     created += 1;
   }
 

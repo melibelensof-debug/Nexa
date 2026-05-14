@@ -1,45 +1,44 @@
 "use client";
 
-import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
+import { createClient } from "@/lib/supabase/browser";
+
+export const dynamic = "force-dynamic";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const supabase = createClient();
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setInfo(null);
     setLoading(true);
 
-    const res = await fetch("/api/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
+    const { data, error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: name } },
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "No se pudo crear la cuenta");
-      setLoading(false);
+    setLoading(false);
+    if (authError) {
+      setError(authError.message);
       return;
     }
 
-    const signRes = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-    setLoading(false);
-    if (signRes?.error) {
-      setError("Cuenta creada. Inicia sesión manualmente.");
-      router.push("/login");
+    // Si el proyecto requiere confirmación por email, no hay sesión todavía
+    if (!data.session) {
+      setInfo("Revisa tu email para confirmar la cuenta antes de ingresar.");
       return;
     }
     router.push("/dashboard");
@@ -75,16 +74,15 @@ export default function RegisterPage() {
           <input
             type="password"
             required
-            minLength={8}
+            minLength={6}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="mt-1 w-full rounded-lg border px-3 py-2"
           />
-          <span className="mt-1 block text-xs text-slate-500">
-            Mínimo 8 caracteres
-          </span>
+          <span className="mt-1 block text-xs text-slate-500">Mínimo 6 caracteres</span>
         </label>
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {info && <p className="text-sm text-emerald-700">{info}</p>}
         <button
           type="submit"
           disabled={loading}

@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
 
 export default async function HomePage({
   searchParams,
@@ -7,23 +9,26 @@ export default async function HomePage({
   searchParams: { q?: string };
 }) {
   const q = searchParams.q?.trim();
+  const supabase = createClient();
 
-  const [categories, featured] = await Promise.all([
-    prisma.category.findMany({ orderBy: { name: "asc" } }),
-    prisma.business.findMany({
-      where: q
-        ? {
-            OR: [
-              { name: { contains: q } },
-              { description: { contains: q } },
-            ],
-          }
-        : undefined,
-      include: { category: true, region: true },
-      orderBy: { createdAt: "desc" },
-      take: 6,
-    }),
-  ]);
+  const categoriesRes = await supabase
+    .from("categories")
+    .select("id, slug, name, icon")
+    .order("name");
+
+  let featuredQuery = supabase
+    .from("businesses")
+    .select("id, slug, name, description, category:categories(name), region:regions(name)")
+    .order("created_at", { ascending: false })
+    .limit(6);
+
+  if (q) {
+    featuredQuery = featuredQuery.or(`name.ilike.%${q}%,description.ilike.%${q}%`);
+  }
+  const featuredRes = await featuredQuery;
+
+  const categories = categoriesRes.data ?? [];
+  const featured = featuredRes.data ?? [];
 
   return (
     <div className="space-y-12">
@@ -86,22 +91,26 @@ export default async function HomePage({
           <p className="text-slate-500">No se encontraron negocios.</p>
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {featured.map((b) => (
-              <li
-                key={b.id}
-                className="rounded-xl border bg-white p-5 hover:border-brand-500 hover:shadow"
-              >
-                <Link href={`/businesses/${b.slug}`} className="block">
-                  <div className="text-xs uppercase tracking-wide text-brand-600">
-                    {b.category.name} · {b.region.name}
-                  </div>
-                  <div className="mt-1 text-lg font-semibold">{b.name}</div>
-                  <p className="mt-2 line-clamp-3 text-sm text-slate-600">
-                    {b.description}
-                  </p>
-                </Link>
-              </li>
-            ))}
+            {featured.map((b) => {
+              const cat = Array.isArray(b.category) ? b.category[0] : b.category;
+              const reg = Array.isArray(b.region) ? b.region[0] : b.region;
+              return (
+                <li
+                  key={b.id}
+                  className="rounded-xl border bg-white p-5 hover:border-brand-500 hover:shadow"
+                >
+                  <Link href={`/businesses/${b.slug}`} className="block">
+                    <div className="text-xs uppercase tracking-wide text-brand-600">
+                      {cat?.name} · {reg?.name}
+                    </div>
+                    <div className="mt-1 text-lg font-semibold">{b.name}</div>
+                    <p className="mt-2 line-clamp-3 text-sm text-slate-600">
+                      {b.description}
+                    </p>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

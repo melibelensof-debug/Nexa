@@ -1,0 +1,175 @@
+-- ============================================================================
+-- Nexa — datos de muestra (negocios)
+-- Ejecutar después de schema.sql en Supabase → SQL Editor
+-- Estos negocios no tienen owner (NULL), así son visibles a todos.
+-- ============================================================================
+
+with cat as (select id, slug from public.categories),
+     reg as (select id, slug from public.regions)
+insert into public.businesses (
+  name, slug, description, category_id, region_id,
+  email, phone, website, instagram, facebook, whatsapp, address, source
+)
+select v.name, v.slug, v.description,
+       (select id from cat where slug = v.cat_slug),
+       (select id from reg where slug = v.reg_slug),
+       v.email, v.phone, v.website, v.instagram, v.facebook, v.whatsapp, v.address,
+       'manual'
+from (values
+  -- Gastronomía
+  ('Panadería La Esquina', 'panaderia-la-esquina',
+   'Panadería artesanal con productos sin TACC y panes de masa madre.',
+   'gastronomia', 'buenos-aires',
+   null, null, null, 'panaderialaesquina', null, '+5491111111111', 'Av. Corrientes 1234, CABA'),
+  ('Café Trinidad', 'cafe-trinidad',
+   'Cafetería de especialidad con granos de origen único y brunch los fines de semana.',
+   'gastronomia', 'cordoba',
+   null, '+543514567890', null, 'cafetrinidad', null, null, null),
+  ('Empanadas del Norte', 'empanadas-del-norte',
+   'Empanadas salteñas tradicionales horneadas en horno de barro.',
+   'gastronomia', 'salta',
+   null, null, null, null, 'empanadasdelnorte', '+5493871234567', null),
+  ('Heladería Artesanal Polo', 'heladeria-artesanal-polo',
+   'Heladería artesanal con sabores regionales: dulce de leche granizado, calafate y más.',
+   'gastronomia', 'bariloche',
+   null, null, null, 'polo.helados', null, null, 'Mitre 250, Bariloche'),
+  ('Pizzería Don Mario', 'pizzeria-don-mario',
+   'Pizza a la piedra al estilo argentino, con receta familiar de tres generaciones.',
+   'gastronomia', 'rosario',
+   null, '+543415551122', null, null, 'donmariopizza', null, null),
+
+  -- Moda
+  ('Telar Andino', 'telar-andino',
+   'Indumentaria tejida a mano con lana de oveja y teñidos naturales.',
+   'moda', 'mendoza',
+   null, null, 'https://telarandino.example', 'telar.andino', null, null, null),
+  ('Boutique Aurora', 'boutique-aurora',
+   'Diseño de autor en prendas femeninas, producción local de pequeña escala.',
+   'moda', 'buenos-aires',
+   null, null, null, 'boutique.aurora', null, '+5491122334455', null),
+  ('Calzados Pampa', 'calzados-pampa',
+   'Zapatos de cuero argentino, hechos a mano por artesanos de la región.',
+   'moda', 'la-plata',
+   null, '+542215557788', null, 'calzadospampa', null, null, null),
+  ('Atelier Norte', 'atelier-norte',
+   'Sastrería y arreglos de prendas finas, atención personalizada.',
+   'moda', 'tucuman',
+   null, null, null, null, 'ateliernorte', null, null),
+
+  -- Tecnología
+  ('Estudio Pixel', 'estudio-pixel',
+   'Desarrollo web y diseño UX para pymes y emprendedores.',
+   'tecnologia', 'cordoba',
+   'hola@estudiopixel.example', null, 'https://estudiopixel.example', null, null, null, null),
+  ('Códigos del Sur', 'codigos-del-sur',
+   'Software a medida y consultoría en transformación digital.',
+   'tecnologia', 'buenos-aires',
+   null, null, 'https://codigosdelsur.example', 'codigosdelsur', null, null, null),
+  ('TecnoSoporte Mendoza', 'tecnosoporte-mendoza',
+   'Servicio técnico de PCs, notebooks y redes para empresas.',
+   'tecnologia', 'mendoza',
+   null, '+542614556677', null, null, null, '+542614556677', null),
+  ('DataLab Patagonia', 'datalab-patagonia',
+   'Análisis de datos y dashboards a medida para retail y turismo.',
+   'tecnologia', 'neuquen',
+   'contacto@datalabpat.example', null, 'https://datalabpat.example', null, null, null, null),
+
+  -- Servicios
+  ('Mudanzas Express', 'mudanzas-express',
+   'Mudanzas locales y de larga distancia con personal capacitado.',
+   'servicios', 'rosario',
+   null, '+543415554433', null, null, null, '+543415554433', null),
+  ('Contadores Asociados Salta', 'contadores-asociados-salta',
+   'Asesoramiento contable e impositivo para pymes y monotributistas.',
+   'servicios', 'salta',
+   'info@contsalta.example', '+543874442211', null, null, null, null, null),
+  ('Limpieza Crystal', 'limpieza-crystal',
+   'Servicios de limpieza para oficinas, consorcios y locales comerciales.',
+   'servicios', 'mar-del-plata',
+   null, null, null, 'limpiezacrystal', null, '+542235551234', null),
+
+  -- Belleza
+  ('Estudio de Uñas Lila', 'estudio-de-unas-lila',
+   'Esmaltado semipermanente, diseños personalizados y manicuría rusa.',
+   'belleza', 'buenos-aires',
+   null, null, null, 'estudiouna.lila', null, '+5491133221100', null),
+  ('Peluquería Origen', 'peluqueria-origen',
+   'Cortes, color y tratamientos capilares con productos veganos.',
+   'belleza', 'cordoba',
+   null, null, null, 'peluqueriaorigen', null, null, 'Bv. Illia 450, Córdoba'),
+  ('Spa Serena', 'spa-serena',
+   'Masajes descontracturantes, faciales y terapias de relajación.',
+   'belleza', 'bariloche',
+   null, '+542944333222', 'https://spaserena.example', null, null, null, null),
+
+  -- Hogar
+  ('Maderas y Diseño', 'maderas-y-diseno',
+   'Muebles de algarrobo a medida, hechos por carpinteros locales.',
+   'hogar', 'tucuman',
+   null, null, null, 'maderasydiseno', null, '+543814112233', null),
+  ('Plantas Verdes', 'plantas-verdes',
+   'Vivero con plantas de interior, suculentas y asesoramiento gratis.',
+   'hogar', 'la-plata',
+   null, null, null, null, 'plantasverdesvivero', null, 'Calle 13 entre 50 y 51, La Plata'),
+  ('Iluminación Norte', 'iluminacion-norte',
+   'Lámparas artesanales y diseño de iluminación para hogares y comercios.',
+   'hogar', 'salta',
+   null, null, 'https://iluminacionnorte.example', null, null, null, null),
+
+  -- Salud
+  ('Centro de Kinesiología Avanzar', 'centro-de-kinesiologia-avanzar',
+   'Rehabilitación deportiva, traumatológica y respiratoria.',
+   'salud', 'rosario',
+   'turnos@avanzarkine.example', '+543415557766', null, null, null, null, null),
+  ('Nutrición Consciente', 'nutricion-consciente',
+   'Acompañamiento nutricional online y presencial, planes personalizados.',
+   'salud', 'buenos-aires',
+   null, null, null, 'nutricion.consciente', null, '+5491145678899', null),
+  ('Odontología Sonrisa Plus', 'odontologia-sonrisa-plus',
+   'Odontología general, ortodoncia y estética dental.',
+   'salud', 'mendoza',
+   null, '+542614778899', null, null, null, null, 'San Martín 1500, Mendoza'),
+
+  -- Educación
+  ('Academia Idiomas Babel', 'academia-idiomas-babel',
+   'Clases de inglés, portugués y francés en grupos reducidos.',
+   'educacion', 'cordoba',
+   'info@babelidiomas.example', null, 'https://babelidiomas.example', null, null, null, null),
+  ('Robótica Kids', 'robotica-kids',
+   'Talleres de robótica y programación para niños de 6 a 14 años.',
+   'educacion', 'buenos-aires',
+   null, '+5491155667788', null, 'robotica.kids', null, null, null),
+  ('Estudio Música del Sur', 'estudio-musica-del-sur',
+   'Clases de guitarra, piano y canto, todos los niveles.',
+   'educacion', 'neuquen',
+   null, null, null, null, 'musicadelsurestudio', null, null),
+
+  -- Arte y diseño
+  ('Galería Origen', 'galeria-origen',
+   'Galería de arte con exposiciones rotativas de artistas emergentes.',
+   'arte-y-diseno', 'buenos-aires',
+   null, null, 'https://galeriaorigen.example', 'galeria.origen', null, null, null),
+  ('Cerámica Luna', 'ceramica-luna',
+   'Vajilla y objetos de cerámica artesanal hechos a torno.',
+   'arte-y-diseno', 'mar-del-plata',
+   null, null, null, 'ceramica.luna', null, '+542235559911', null),
+  ('Imprenta Tinta Viva', 'imprenta-tinta-viva',
+   'Imprenta tradicional, tipografía móvil y papelería de boda.',
+   'arte-y-diseno', 'la-plata',
+   'hola@tintaviva.example', null, null, null, null, null, null),
+
+  -- Mascotas
+  ('Veterinaria Patitas', 'veterinaria-patitas',
+   'Atención veterinaria 24hs, vacunación y peluquería canina.',
+   'mascotas', 'rosario',
+   null, '+543415552288', null, null, null, null, 'Pellegrini 800, Rosario'),
+  ('Peluquería Canina Guau', 'peluqueria-canina-guau',
+   'Baño, corte y estética para perros y gatos. Productos hipoalergénicos.',
+   'mascotas', 'buenos-aires',
+   null, null, null, 'guaupelu', null, '+5491166778899', null),
+  ('Adiestramiento Andino', 'adiestramiento-andino',
+   'Adiestramiento canino positivo, sesiones individuales y grupales.',
+   'mascotas', 'mendoza',
+   null, null, null, null, 'adiestramientoandino', null, null)
+) as v(name, slug, description, cat_slug, reg_slug, email, phone, website, instagram, facebook, whatsapp, address)
+on conflict (slug) do nothing;

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { geocode } from "@/lib/geo";
 import { optimizeRoute, buildGoogleMapsUrl, type Stop } from "@/lib/route";
 
 const schema = z.object({
-  /** Dirección u origen del usuario (si no se envían lat/lon). */
   origin: z
     .object({
       address: z.string().min(2).optional(),
@@ -15,7 +15,6 @@ const schema = z.object({
     .refine((o) => o.address || (typeof o.lat === "number" && typeof o.lon === "number"), {
       message: "Debe enviar address o lat/lon",
     }),
-  /** Lista de paradas: pueden ser businessId o address libre. */
   stops: z
     .array(
       z.object({
@@ -36,8 +35,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 });
   }
   const { origin, stops } = parsed.data;
+  const supabase = createClient();
+  const admin = createAdminClient();
 
-  // Resolver origen
   let originStop: Stop;
   if (origin.lat != null && origin.lon != null) {
     originStop = { id: "origin", name: "Origen", lat: origin.lat, lon: origin.lon };
@@ -49,7 +49,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Origen inválido" }, { status: 400 });
   }
 
-  // Resolver cada parada
   const resolved: Stop[] = [originStop];
   const unresolved: string[] = [];
 
@@ -57,18 +56,22 @@ export async function POST(request: Request) {
     const s = stops[idx];
 
     if (s.businessId) {
-      const biz = await prisma.business.findUnique({
-        where: { id: s.businessId },
-        include: { region: true },
-      });
+      const { data: biz } = await supabase
+        .from("businesses")
+        .select("id, name, address, latitude, longitude, region:regions(name)")
+        .eq("id", s.businessId)
+        .maybeSingle();
+
       if (!biz) {
         unresolved.push(s.label ?? s.businessId);
         continue;
       }
+
       let lat = biz.latitude;
       let lon = biz.longitude;
       if (lat == null || lon == null) {
-        const query = `${biz.address ?? biz.name}, ${biz.region.name}, Argentina`;
+        const reg = Array.isArray(biz.region) ? biz.region[0] : biz.region;
+        const query = `${biz.address ?? biz.name}, ${reg?.name ?? ""}, Argentina`;
         const g = await geocode(query);
         if (!g) {
           unresolved.push(biz.name);
@@ -76,7 +79,8 @@ export async function POST(request: Request) {
         }
         lat = g.lat;
         lon = g.lon;
-        await prisma.business.update({ where: { id: biz.id }, data: { latitude: lat, longitude: lon } });
+        // Persistimos las coords (usando admin para bypassar RLS)
+        await admin.from("businesses").update({ latitude: lat, longitude: lon }).eq("id", biz.id);
       }
       resolved.push({
         id: biz.id,

@@ -1,14 +1,15 @@
 "use client";
 
-import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Suspense, useState } from "react";
+import { createClient } from "@/lib/supabase/browser";
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const callbackUrl = params.get("callbackUrl") ?? "/dashboard";
+  const redirectTo = params.get("redirectedFrom") ?? "/dashboard";
+  const supabase = createClient();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,17 +20,18 @@ function LoginForm() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const res = await signIn("credentials", {
+
+    const { error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
-      redirect: false,
     });
+
     setLoading(false);
-    if (res?.error) {
+    if (authError) {
       setError("Email o contraseña incorrectos");
       return;
     }
-    router.push(callbackUrl);
+    router.push(redirectTo);
     router.refresh();
   }
 
@@ -50,7 +52,7 @@ function LoginForm() {
         <input
           type="password"
           required
-          minLength={8}
+          minLength={6}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="mt-1 w-full rounded-lg border px-3 py-2"

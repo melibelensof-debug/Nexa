@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
-import { prisma } from "@/lib/prisma";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { geocode } from "@/lib/geo";
 
 /**
@@ -11,30 +11,33 @@ export async function POST() {
   const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
-  const pending = await prisma.business.findMany({
-    where: { latitude: null, address: { not: null } },
-    take: 30, // procesamos en lotes para mantener la respuesta razonable
-    include: { region: true },
-  });
+  const supabase = createAdminClient();
+
+  const { data: pending } = await supabase
+    .from("businesses")
+    .select("id, address, region:regions(name)")
+    .is("latitude", null)
+    .not("address", "is", null)
+    .limit(30);
 
   let updated = 0;
   let failed = 0;
 
-  for (const b of pending) {
-    const query = `${b.address}, ${b.region.name}, Argentina`;
+  for (const b of pending ?? []) {
+    const reg = Array.isArray(b.region) ? b.region[0] : b.region;
+    const query = `${b.address}, ${reg?.name ?? ""}, Argentina`;
     const result = await geocode(query);
     if (result) {
-      await prisma.business.update({
-        where: { id: b.id },
-        data: { latitude: result.lat, longitude: result.lon },
-      });
+      await supabase
+        .from("businesses")
+        .update({ latitude: result.lat, longitude: result.lon })
+        .eq("id", b.id);
       updated += 1;
     } else {
       failed += 1;
     }
-    // Nominatim: 1 req/seg
     await new Promise((r) => setTimeout(r, 1100));
   }
 
-  return NextResponse.json({ processed: pending.length, updated, failed });
+  return NextResponse.json({ processed: pending?.length ?? 0, updated, failed });
 }

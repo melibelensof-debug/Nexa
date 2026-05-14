@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
 import { ImportPanels } from "./ImportPanels";
 
 export const dynamic = "force-dynamic";
@@ -8,13 +8,14 @@ export const dynamic = "force-dynamic";
 export default async function ImportAdminPage() {
   const auth = await requireAdmin();
   if (!auth.ok) {
-    if (auth.status === 401) redirect("/login?callbackUrl=/admin/import");
+    if (auth.status === 401) redirect("/login?redirectedFrom=/admin/import");
     redirect("/dashboard");
   }
 
-  const [categories, regions] = await Promise.all([
-    prisma.category.findMany({ orderBy: { name: "asc" }, select: { slug: true, name: true } }),
-    prisma.region.findMany({ orderBy: { name: "asc" }, select: { slug: true, name: true } }),
+  const supabase = createClient();
+  const [{ data: categories }, { data: regions }] = await Promise.all([
+    supabase.from("categories").select("slug, name").order("name"),
+    supabase.from("regions").select("slug, name").order("name"),
   ]);
 
   return (
@@ -25,7 +26,7 @@ export default async function ImportAdminPage() {
           Trae datos desde Google Maps, Instagram o Facebook y guárdalos en el directorio.
         </p>
       </header>
-      <ImportPanels categories={categories} regions={regions} />
+      <ImportPanels categories={categories ?? []} regions={regions ?? []} />
     </div>
   );
 }

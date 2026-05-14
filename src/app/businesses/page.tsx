@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -9,29 +9,29 @@ export default async function BusinessesPage({
   searchParams: { category?: string; region?: string; q?: string };
 }) {
   const { category, region, q } = searchParams;
+  const supabase = createClient();
 
-  const [categories, regions, businesses] = await Promise.all([
-    prisma.category.findMany({ orderBy: { name: "asc" } }),
-    prisma.region.findMany({ orderBy: { name: "asc" } }),
-    prisma.business.findMany({
-      where: {
-        AND: [
-          category ? { category: { slug: category } } : {},
-          region ? { region: { slug: region } } : {},
-          q
-            ? {
-                OR: [
-                  { name: { contains: q } },
-                  { description: { contains: q } },
-                ],
-              }
-            : {},
-        ],
-      },
-      include: { category: true, region: true },
-      orderBy: { name: "asc" },
-    }),
+  const [{ data: categories }, { data: regions }] = await Promise.all([
+    supabase.from("categories").select("id, slug, name").order("name"),
+    supabase.from("regions").select("id, slug, name").order("name"),
   ]);
+
+  let query = supabase
+    .from("businesses")
+    .select("id, slug, name, description, category:categories!inner(name, slug), region:regions!inner(name, slug)")
+    .order("name");
+
+  if (category) {
+    query = query.eq("categories.slug", category);
+  }
+  if (region) {
+    query = query.eq("regions.slug", region);
+  }
+  if (q) {
+    query = query.or(`name.ilike.%${q}%,description.ilike.%${q}%`);
+  }
+
+  const { data: businesses } = await query;
 
   return (
     <div className="space-y-6">
@@ -47,18 +47,14 @@ export default async function BusinessesPage({
         />
         <select name="category" defaultValue={category ?? ""} className="rounded-lg border px-3 py-2">
           <option value="">Todas las categorías</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.slug}>
-              {c.name}
-            </option>
+          {(categories ?? []).map((c) => (
+            <option key={c.id} value={c.slug}>{c.name}</option>
           ))}
         </select>
         <select name="region" defaultValue={region ?? ""} className="rounded-lg border px-3 py-2">
           <option value="">Todas las regiones</option>
-          {regions.map((r) => (
-            <option key={r.id} value={r.slug}>
-              {r.name}
-            </option>
+          {(regions ?? []).map((r) => (
+            <option key={r.id} value={r.slug}>{r.name}</option>
           ))}
         </select>
         <button
@@ -69,26 +65,30 @@ export default async function BusinessesPage({
         </button>
       </form>
 
-      {businesses.length === 0 ? (
+      {!businesses || businesses.length === 0 ? (
         <p className="text-slate-500">No hay resultados con esos filtros.</p>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {businesses.map((b) => (
-            <li
-              key={b.id}
-              className="rounded-xl border bg-white p-5 hover:border-brand-500 hover:shadow"
-            >
-              <Link href={`/businesses/${b.slug}`} className="block">
-                <div className="text-xs uppercase tracking-wide text-brand-600">
-                  {b.category.name} · {b.region.name}
-                </div>
-                <div className="mt-1 text-lg font-semibold">{b.name}</div>
-                <p className="mt-2 line-clamp-3 text-sm text-slate-600">
-                  {b.description}
-                </p>
-              </Link>
-            </li>
-          ))}
+          {businesses.map((b) => {
+            const cat = Array.isArray(b.category) ? b.category[0] : b.category;
+            const reg = Array.isArray(b.region) ? b.region[0] : b.region;
+            return (
+              <li
+                key={b.id}
+                className="rounded-xl border bg-white p-5 hover:border-brand-500 hover:shadow"
+              >
+                <Link href={`/businesses/${b.slug}`} className="block">
+                  <div className="text-xs uppercase tracking-wide text-brand-600">
+                    {cat?.name} · {reg?.name}
+                  </div>
+                  <div className="mt-1 text-lg font-semibold">{b.name}</div>
+                  <p className="mt-2 line-clamp-3 text-sm text-slate-600">
+                    {b.description}
+                  </p>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
